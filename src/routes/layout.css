@@ -1,3 +1,24 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
+
+
+  /* Animazioni per il flash delle righe aggiornate */
+  @keyframes flashAsk {
+    0% { background-color: rgba(239, 68, 68, 0.35); } /* Rosso */
+    100% { background-color: transparent; }
+  }
+
+  @keyframes flashBid {
+    0% { background-color: rgba(16, 185, 129, 0.35); } /* Verde */
+    100% { background-color: transparent; }
+  }
+
+  /* Classi che assegnano l'animazione: dura 400ms e poi svanisce */
+  .animate-flash-ask { animation: flashAsk 0.4s ease-out forwards; }
+  .animate-flash-bid { animation: flashBid 0.4s ease-out forwards; }
+
+  /* Scrollbar pulite */
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #262626; border-radius: 10px; }
