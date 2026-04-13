@@ -3,14 +3,16 @@
 
   type OrderLevel = [string, string]; 
 
-  const symbol = 'CLUSDT'; 
+  const symbol = 'FIGHTUSDT'; 
   const wsUrl = 'wss://stream.bybit.com/v5/public/linear'; 
   const depth = 200; 
   
+  const groupDecimals = 6; 
+
   let ws: WebSocket | null = null;
 
-  let asks = $state<OrderLevel[]>([]);
-  let bids = $state<OrderLevel[]>([]);
+  let rawAsks = $state<OrderLevel[]>([]);
+  let rawBids = $state<OrderLevel[]>([]);
   let connectionStatus = $state('Connessione...');
 
   const mergeData = (currentBook: OrderLevel[], updates: string[][], isAsk: boolean): OrderLevel[] => {
@@ -22,23 +24,34 @@
     });
 
     let mergedArray = Array.from(bookMap.entries()) as OrderLevel[];
-    
-    if (isAsk) {
-      return mergedArray.sort((a, b) => parseFloat(a[0]) - parseFloat(b[0])).slice(0, depth);
-    } else {
-      return mergedArray.sort((a, b) => parseFloat(b[0]) - parseFloat(a[0])).slice(0, depth);
-    }
+    if (isAsk) return mergedArray.sort((a, b) => parseFloat(a[0]) - parseFloat(b[0])).slice(0, depth);
+    else return mergedArray.sort((a, b) => parseFloat(b[0]) - parseFloat(a[0])).slice(0, depth);
   };
+
+  const aggregateData = (book: OrderLevel[], isAsk: boolean): OrderLevel[] => {
+    const grouped = new Map<string, number>();
+
+    for (const [price, qty] of book) {
+      const groupPrice = parseFloat(price).toFixed(groupDecimals);
+      const currentQty = grouped.get(groupPrice) || 0;
+      grouped.set(groupPrice, currentQty + parseFloat(qty));
+    }
+
+    const result = Array.from(grouped.entries()).map(([p, q]) => [p, q.toString()] as OrderLevel);
+
+    if (isAsk) return result.sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]));
+    else return result.sort((a, b) => parseFloat(b[0]) - parseFloat(a[0]));
+  };
+
+  let aggregatedAsks = $derived(aggregateData(rawAsks, true));
+  let aggregatedBids = $derived(aggregateData(rawBids, false));
 
   onMount(() => {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       connectionStatus = `Live: ${symbol} (Perp)`;
-      ws?.send(JSON.stringify({ 
-        op: 'subscribe', 
-        args: [`orderbook.${depth}.${symbol}`] 
-      }));
+      ws?.send(JSON.stringify({ op: 'subscribe', args: [`orderbook.${depth}.${symbol}`] }));
     };
 
     ws.onmessage = (event) => {
@@ -48,20 +61,19 @@
       const { data, type } = response;
 
       if (type === 'snapshot') {
-        asks = data.a || [];
-        bids = data.b || [];
+        rawAsks = data.a || [];
+        rawBids = data.b || [];
       } else if (type === 'delta') {
-        if (data.a) asks = mergeData(asks, data.a, true);
-        if (data.b) bids = mergeData(bids, data.b, false);
+        if (data.a) rawAsks = mergeData(rawAsks, data.a, true);
+        if (data.b) rawBids = mergeData(rawBids, data.b, false);
       }
     };
 
-    ws.onclose = () => { connectionStatus = 'Riconnessione... 🔄'; };
+    ws.onclose = () => { connectionStatus = 'Riconnessione...'; };
   });
 
   onDestroy(() => ws?.close());
 </script>
-
 
 <div class="h-screen w-full bg-neutral-950 text-white flex justify-center overflow-hidden font-sans">
   
@@ -73,7 +85,7 @@
         <span class="text-[10px] bg-neutral-800 px-2 py-0.5 rounded text-neutral-400 uppercase tracking-widest font-bold">Perp</span>
       </div>
       <div class="text-xs font-mono text-neutral-500">
-        {connectionStatus} | {depth}
+        {connectionStatus} | Gruppi: {groupDecimals} dec
       </div>
     </div>
 
@@ -87,13 +99,16 @@
         
         <div class="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-800 relative">
           <div class="flex flex-col-reverse">
-            {#each asks as [price, qty] (price)}
+            {#each aggregatedAsks as [price, qty] (price)}
               <div class="relative flex justify-between px-4 py-1 border-b border-neutral-900/50 font-mono text-sm group">
                 {#key qty}
                   <div class="absolute inset-0 animate-flash-ask pointer-events-none"></div>
                 {/key}
-                <span class="text-red-500 relative z-10 group-hover:font-bold">{parseFloat(price).toFixed(5)}</span>
-                <span class="text-neutral-400 relative z-10">{parseFloat(qty).toLocaleString()}</span>
+                <span class="text-red-500 relative z-10 group-hover:font-bold">{price}</span>
+                
+                <span class="text-neutral-400 relative z-10">
+                  {parseFloat(qty).toLocaleString('it-IT')}
+                </span>
               </div>
             {/each}
           </div>
@@ -103,7 +118,6 @@
       <div class="h-1/2 md:h-auto md:flex-1 flex flex-col">
         
         <div class="md:hidden shrink-0 bg-neutral-800 text-center py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-widest border-b border-neutral-900 z-20">
-          Spread di Mercato
         </div>
         
         <div class="hidden md:flex bg-neutral-900/50 px-4 py-2 text-[10px] font-bold text-neutral-500 uppercase justify-between z-20 shadow-sm">
@@ -113,13 +127,16 @@
 
         <div class="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-800 relative">
           <div class="flex flex-col">
-            {#each bids as [price, qty] (price)}
+            {#each aggregatedBids as [price, qty] (price)}
               <div class="relative flex justify-between px-4 py-1 border-b border-neutral-900/50 font-mono text-sm group">
                 {#key qty}
                   <div class="absolute inset-0 animate-flash-bid pointer-events-none"></div>
                 {/key}
-                <span class="text-emerald-500 relative z-10 group-hover:font-bold">{parseFloat(price).toFixed(5)}</span>
-                <span class="text-neutral-400 relative z-10">{parseFloat(qty).toLocaleString()}</span>
+                <span class="text-emerald-500 relative z-10 group-hover:font-bold">{price}</span>
+                
+                <span class="text-neutral-400 relative z-10">
+                  {parseFloat(qty).toLocaleString('it-IT')}
+                </span>
               </div>
             {/each}
           </div>
