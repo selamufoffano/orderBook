@@ -8,3 +8,7 @@ Exchange supported: Bybit, Binance, Bitget
 | Bitget | Not started |
 
 ---
+
+
+https://github.com/user-attachments/assets/93d53265-47df-4ead-aea5-51537318a295
+
